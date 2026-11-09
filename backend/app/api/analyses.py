@@ -11,7 +11,8 @@ Endpoints:
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,13 @@ from app.schemas.analysis import AnalysisCreate, AnalysisDetail, AnalysisSummary
 from app.services.analysis_service import (
     AnalysisValidationError,
     screen_candidate,
+)
+from app.services.document_parser import (
+    DocumentParserError,
+    EmptyDocumentError,
+    FileTooLargeError,
+    UnsupportedFileTypeError,
+    extract_text_from_file,
 )
 from app.services.llm_client import (
     LLMAPIError,
@@ -33,6 +41,64 @@ from app.services.llm_client import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/analyses", tags=["analyses"])
+
+
+class ResumeUploadResponse(BaseModel):
+    """Response returned after parsing an uploaded resume file."""
+
+    filename: str
+    text: str
+    char_count: int
+
+
+# ---------------------------------------------------------------------------
+# POST /api/analyses/upload – Extract Text from File
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/upload",
+    response_model=ResumeUploadResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Extract text from an uploaded resume (.pdf, .docx, .txt)",
+)
+async def upload_resume(
+    file: UploadFile = File(..., description="Resume file (.pdf, .docx, or .txt)"),
+) -> ResumeUploadResponse:
+    """
+    Accept an uploaded resume, extract its text in-memory, and return the text.
+    Does not run the LLM or persist to the database, allowing HR to inspect the extracted text.
+    """
+    content = await file.read()
+
+    try:
+        extracted = extract_text_from_file(file.filename or "unknown", content)
+    except UnsupportedFileTypeError as err:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(err),
+        ) from None
+    except FileTooLargeError as err:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=str(err),
+        ) from None
+    except EmptyDocumentError as err:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(err),
+        ) from None
+    except DocumentParserError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from None
+
+    return ResumeUploadResponse(
+        filename=file.filename or "unknown",
+        text=extracted,
+        char_count=len(extracted),
+    )
 
 
 
