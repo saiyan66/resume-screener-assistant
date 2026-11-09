@@ -42,11 +42,11 @@ Decision log for the Resume Screener Assistant.
 
 ## 5. LLM provider
 
-**Status:** Decided; structured-output support and exact limits are To verify (see Open questions).  
-**Decision:** Groq free tier, model `openai/gpt-oss-120b`.  
+**Status:** Decided  
+**Decision:** Groq free tier, model `openai/gpt-oss-120b`. Strict JSON Schema structured output verified live with project key.  
 **Alternatives considered:** —  
-**Why:** Free, fast, and Groq's docs list strict JSON-schema structured output for the gpt-oss models.  
-**Tradeoff or limitation:** Free-tier limits (sample figures from Groq's published page, to be confirmed on account limits page): 30 requests/min, 1,000 requests/day, 8,000 tokens/min, 200,000 tokens/day. Input size and retries must be controlled accordingly.
+**Why:** Free, fast, and strict JSON Schema (`response_format` with `strict: True`) is verified working natively on `openai/gpt-oss-120b`. A representative screening run generated 698 prompt tokens and 313 completion tokens (~1,011 total tokens).  
+**Tradeoff or limitation:** Groq free-tier limits: 30 requests/min, 1,000 requests/day, 8,000 tokens/min, 200,000 tokens/day. Per-document caps and retries must fit within 8,000 TPM.
 
 ---
 
@@ -62,11 +62,11 @@ Decision log for the Resume Screener Assistant.
 
 ## 7. Input limit
 
-**Status:** Decided (provisional; to be tuned against real usage numbers).  
-**Decision:** Per-document cap of 8,000 characters (about 2,000 tokens each, at roughly 4 characters per token). Input is truncated and a visible notice is shown to the user.  
-**Alternatives considered:** —  
-**Why:** Two documents plus the prompt plus output must fit the per-minute token limit.  
-**Tradeoff or limitation:** Provisional figure, to be tuned against real usage numbers.
+**Status:** Decided  
+**Decision:** Per-document cap of 8,000 characters (`max_input_chars_per_doc`, roughly 2,000 tokens each), with truncation and a visible UI notice. Output cap (`max_completion_tokens`) set to 2,048.  
+**Alternatives considered:** Higher caps (e.g., 12,000 characters per document).  
+**Why:** Two 8,000-character documents (~4,000 tokens) + system prompt (~500 tokens) + output (~330 observed tokens, capped at 2,048) totals ~4,830 tokens under worst-case input, fitting safely inside Groq's 8,000 TPM limit.  
+**Tradeoff or limitation:** Long resumes or lengthy job specs will be truncated with a notice.
 
 ---
 
@@ -85,7 +85,7 @@ Decision log for the Resume Screener Assistant.
 **Status:** Decided  
 **Decision:** pydantic-settings reads environment variables and a git-ignored `.env` file. The API key is stored as `SecretStr` so it is masked if the settings object is printed. The app refuses to start if the key is missing or looks like a placeholder.  
 **Alternatives considered:** Stricter mode that rejects unknown environment variables instead of ignoring them.  
-**Why:** Standard practice for twelve-factor apps.  
+**Why:** —  
 **Tradeoff or limitation:** Unknown environment variables are ignored, so a misnamed variable silently falls back to its default.
 
 ---

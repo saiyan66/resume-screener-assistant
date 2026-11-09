@@ -9,7 +9,7 @@ Strict boundaries:
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
+from functools import lru_cache
 
 from groq import (
     APIConnectionError,
@@ -26,6 +26,12 @@ from app.schemas.analysis import provider_schema
 logger = logging.getLogger(__name__)
 
 
+MAX_OUTPUT_TOKENS = 2048
+
+_RESPONSE_FORMAT = {
+    "type": "json_schema",
+    "json_schema": {"name": "MatchReport", "strict": True, "schema": provider_schema()},
+}
 
 
 @dataclass(frozen=True)
@@ -41,152 +47,99 @@ class LLMResponse:
     usage: LLMTokenUsage
 
 
-
 class LLMClientError(Exception):
-    """Base exception for all low-level LLM client errors."""
+    """Base class for all errors raised by this module."""
 
 
 class LLMRateLimitError(LLMClientError):
-    """Raised when Groq returns an HTTP 429 rate limit error."""
-
-    def __init__(self, retry_after: Optional[str] = None):
+    def __init__(self, retry_after: str | None = None):
         self.retry_after = retry_after
-        msg = (
-            f"Groq rate limit exceeded (retry-after: {retry_after}s)"
-            if retry_after
-            else "Groq rate limit exceeded"
-        )
-        super().__init__(msg)
+        suffix = f" (retry-after: {retry_after}s)" if retry_after else ""
+        super().__init__(f"Groq rate limit exceeded{suffix}")
 
 
 class LLMConnectionError(LLMClientError):
-    """Raised on network connection errors or request timeouts."""
+    """Network failure or timeout."""
 
 
 class LLMAPIError(LLMClientError):
-    """Raised when Groq returns a non-200 HTTP response or server error."""
-
-    def __init__(self, status_code: Optional[int] = None, message: str = "Groq API error"):
+    def __init__(self, status_code: int | None = None, code: str | None = None):
         self.status_code = status_code
-        full_msg = f"Groq API error ({status_code}): {message}" if status_code else message
-        super().__init__(full_msg)
+        self.code = code
+        detail = f" [{code}]" if code else ""
+        super().__init__(f"Groq API error (HTTP {status_code}){detail}")
 
 
 class LLMEmptyResponseError(LLMClientError):
-    """Raised when Groq returns a response with missing or empty message content."""
+    """The reply had no usable content."""
 
 
+class LLMOutputTruncatedError(LLMClientError):
+    """The output hit the token cap; retrying with the same cap would fail again."""
 
+
+@lru_cache(maxsize=1)
+def _get_client() -> Groq:
+    settings = get_settings()
+    return Groq(
+        api_key=settings.groq_api_key.get_secret_value(),  # the only place the key is unwrapped
+        timeout=float(settings.llm_timeout_seconds),
+        max_retries=0,  # the service layer owns retry policy; SDK retries would hide token cost
+    )
 
 
 def call_groq(system_prompt: str, user_prompt: str) -> LLMResponse:
-    """
-    Send system and user prompts to Groq and return raw response text and usage.
-
-    Raises:
-        LLMRateLimitError: When Groq returns a 429.
-        LLMConnectionError: On timeout or connection failure.
-        LLMAPIError: On unexpected HTTP or API errors.
-        LLMEmptyResponseError: When response text is absent or empty.
-    """
     settings = get_settings()
-
-    # Secret unwrapped strictly at the boundary of client construction
-    client = Groq(
-        api_key=settings.groq_api_key.get_secret_value(),
-        timeout=float(settings.llm_timeout_seconds),
-    )
-
-    schema = provider_schema()
-
     try:
-        completion = client.chat.completions.create(
+        completion = _get_client().chat.completions.create(
             model=settings.groq_model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=settings.llm_temperature,
-            stream=False,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "MatchReport",
-                    "schema": schema,
-                    "strict": True,
-                },
-            },
-            max_completion_tokens=2048,
+            response_format=_RESPONSE_FORMAT,
+            max_completion_tokens=MAX_OUTPUT_TOKENS,
             reasoning_effort="low",
         )
     except RateLimitError as e:
-        retry_after: Optional[str] = None
-        if e.response is not None and hasattr(e.response, "headers"):
-            retry_after = e.response.headers.get("retry-after")
-        logger.warning(
-            "Groq call failed: rate_limited, model=%s, retry_after=%s",
-            settings.groq_model,
-            retry_after,
-        )
-        raise LLMRateLimitError(retry_after=retry_after) from None
-
+        retry_after = e.response.headers.get("retry-after") if e.response is not None else None
+        logger.warning("Groq call failed: rate_limited, retry_after=%s", retry_after)
+        raise LLMRateLimitError(retry_after) from None
     except (APITimeoutError, APIConnectionError) as e:
-        logger.warning(
-            "Groq call failed: connection_error, model=%s, error_type=%s",
-            settings.groq_model,
-            type(e).__name__,
-        )
+        logger.warning("Groq call failed: connection, error_type=%s", type(e).__name__)
         raise LLMConnectionError("Connection to Groq timed out or failed") from None
-
     except APIStatusError as e:
-        logger.warning(
-            "Groq call failed: status_error, model=%s, status_code=%s",
-            settings.groq_model,
-            e.status_code,
-        )
-        # Never forward raw provider response bodies as they may echo prompt fragments
-        raise LLMAPIError(
-            status_code=e.status_code,
-            message=f"HTTP {e.status_code} from Groq API",
-        ) from None
-
+        # Only a short error code is kept; response bodies may echo prompt text.
+        code = getattr(e, "code", None)
+        code = code if isinstance(code, str) and len(code) <= 64 else None
+        logger.warning("Groq call failed: status=%s, code=%s", e.status_code, code)
+        raise LLMAPIError(e.status_code, code) from None
     except GroqError as e:
-        logger.warning(
-            "Groq call failed: general_error, model=%s, error_type=%s",
-            settings.groq_model,
-            type(e).__name__,
-        )
-        raise LLMAPIError(message=f"Groq SDK error: {type(e).__name__}") from None
+        logger.warning("Groq call failed: sdk_error, error_type=%s", type(e).__name__)
+        raise LLMAPIError() from None
 
-    # Inspect choices and extract content
-    if not completion.choices or completion.choices[0].message.content is None:
-        logger.warning("Groq call failed: empty_content, model=%s", settings.groq_model)
-        raise LLMEmptyResponseError("Groq returned an empty response with no content")
+    if not completion.choices:
+        raise LLMEmptyResponseError("Groq returned no choices")
+    choice = completion.choices[0]
+    if choice.finish_reason == "length":
+        logger.warning("Groq output truncated at max_completion_tokens=%d", MAX_OUTPUT_TOKENS)
+        raise LLMOutputTruncatedError("Output hit the token cap before the JSON finished")
 
-    raw_text = completion.choices[0].message.content.strip()
-    if not raw_text:
-        logger.warning("Groq call failed: blank_content, model=%s", settings.groq_model)
+    text = (choice.message.content or "").strip()
+    if not text:
         raise LLMEmptyResponseError("Groq returned blank content")
 
- 
-    usage_info = completion.usage
-    if usage_info is not None:
-        usage = LLMTokenUsage(
-            prompt_tokens=usage_info.prompt_tokens or 0,
-            completion_tokens=usage_info.completion_tokens or 0,
-            total_tokens=usage_info.total_tokens or 0,
-        )
-    else:
-        usage = LLMTokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
-
-
+    u = completion.usage
+    usage = (
+        LLMTokenUsage(u.prompt_tokens or 0, u.completion_tokens or 0, u.total_tokens or 0)
+        if u
+        else LLMTokenUsage(0, 0, 0)
+    )
     logger.info(
-        "Groq call succeeded: status=200, model=%s, prompt_tokens=%d, completion_tokens=%d, total_tokens=%d",
+        "Groq call ok: model=%s, prompt_tokens=%d, completion_tokens=%d",
         settings.groq_model,
         usage.prompt_tokens,
         usage.completion_tokens,
-        usage.total_tokens,
     )
-
-    return LLMResponse(text=raw_text, usage=usage)
-
+    return LLMResponse(text=text, usage=usage)
