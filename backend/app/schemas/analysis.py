@@ -24,7 +24,7 @@ class MatchReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     candidate_name: ShortText = Field(
-        default="Candidate",
+        ...,
         description="Full name of the candidate extracted from the resume, or 'Candidate' if not found.",
     )
     match_score: int = Field(ge=0, le=100)
@@ -98,3 +98,11 @@ class AnalysisDetail(AnalysisSummary):
 
     job_description: str
     report: MatchReport
+    input_truncated: bool = False
+
+
+class AnalysisListResponse(BaseModel):
+    """Enveloped response for the history list endpoint, providing items and total count."""
+
+    items: list[AnalysisSummary]
+    total: int

@@ -123,20 +123,20 @@ Decision log for the Resume Screener Assistant.
 ## 13. Resume input method and candidate name handling
 
 **Status:** Decided  
-**Decision:** Support both text paste and in-memory file upload (`.pdf`, `.docx`, `.txt`) via `POST /api/analyses/upload`. Candidate name is extracted directly from the resume by the LLM (`MatchReport.candidate_name`), with an optional manual override by HR.  
-**Alternatives considered:** Requiring a third mandatory "Candidate Name" input box; heuristic regex extraction.  
-**Why:** Strictly satisfies Requirement 1 (two inputs: JD and resume) while satisfying Requirement 3 (History search by candidate name). LLM semantic extraction handles varied resume layouts without brittle regexes.  
-**Tradeoff or limitation:** Anonymized resumes without personal names fall back to `"Candidate"`. Scanned image-only PDFs without text layers are rejected. 5 MB upload size cap.
+**Decision:** Dual input support: direct text paste plus hardened in-memory file upload (`.pdf`, `.docx`, `.txt`) via `POST /api/analyses/upload`. Uploads are read using a 64 KB chunked streaming reader that aborts immediately if size exceeds 5 MB before buffering into RAM. Extracted text pre-fills the resume textarea for HR review prior to screening. Candidate name is extracted directly from the resume by the LLM (`MatchReport.candidate_name`), with an optional manual override by HR.  
+**Alternatives considered:** All-in-one multipart screening endpoint; unbounded `await file.read()` buffer; separate mandatory candidate name input box.  
+**Why:** Maximizes recruiter productivity by supporting resume files without burning LLM tokens on garbled extractions. Chunked streaming prevents memory exhaustion attacks.  
+**Tradeoff or limitation:** Scanned image-only PDFs without OCR text layers are rejected with HTTP 422. Anonymized resumes without names fall back to `"Candidate"`. 5 MB cap.
 
 ---
 
 ## 14. Privacy and personal data
 
-**Status:** Open — no decisions made yet.  
-**Decision:** To be determined.  
-**Alternatives considered:** —  
-**Why:** —  
-**Tradeoff or limitation:** —
+**Status:** Decided  
+**Decision:** Five-point privacy architecture: (1) Ephemeral resume processing: raw resume text is never saved to SQLite or disk; it exists in RAM only during inference and is discarded. (2) Zero-logging of candidate content: logs record only model, status, and token counts; DB errors log only exception class names to avoid SQL parameter leaks. (3) Deletion: `DELETE /api/analyses/{id}` supports right-to-erasure. (4) Third-party transmission: resume text is sent over TLS to Groq API for inference only; enterprise ZDR agreements recommended for production.  
+**Alternatives considered:** Persisting full resumes for historical audits; client-side regex PII scrubbing prior to LLM call.  
+**Why:** Minimizes PII exposure and reduces data retention liability to the absolute minimum needed for HR workflow.  
+**Tradeoff or limitation:** Access logs: search queries (`?search=name`) appear in HTTP access logs; production should disable uvicorn access logs (`--no-access-log`). Authentication: public internal endpoint without login for take-home scope; production requires SSO/RBAC.
 
 ---
 

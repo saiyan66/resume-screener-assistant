@@ -149,13 +149,12 @@ def screen_candidate(
         db.refresh(analysis_row)
     except Exception as db_err:
         db.rollback()
-        logger.error("Failed to persist analysis to database: %s", db_err)
+        logger.error("Failed to persist analysis to database: error_type=%s", type(db_err).__name__)
         raise
 
     logger.info(
-        "Successfully saved analysis id=%d for candidate '%s' with score=%d (truncated=%s)",
+        "Successfully saved analysis id=%d with score=%d (truncated=%s)",
         analysis_row.id,
-        analysis_row.candidate_name,
         analysis_row.match_score,
         was_truncated,
     )
