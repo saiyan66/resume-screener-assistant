@@ -120,13 +120,13 @@ Decision log for the Resume Screener Assistant.
 
 ---
 
-## 13. Resume input method
+## 13. Resume input method and candidate name handling
 
-**Status:** Open  
-**Decision:** Open — paste-only versus paste plus file upload (PDF/DOCX).  
-**Alternatives considered:** File upload would add: a multipart dependency, a document parser, file-size limits, and file-safety handling.  
-**Why:** —  
-**Tradeoff or limitation:** —
+**Status:** Decided  
+**Decision:** Support both text paste and in-memory file upload (`.pdf`, `.docx`, `.txt`) via `POST /api/analyses/upload`. Candidate name is extracted directly from the resume by the LLM (`MatchReport.candidate_name`), with an optional manual override by HR.  
+**Alternatives considered:** Requiring a third mandatory "Candidate Name" input box; heuristic regex extraction.  
+**Why:** Strictly satisfies Requirement 1 (two inputs: JD and resume) while satisfying Requirement 3 (History search by candidate name). LLM semantic extraction handles varied resume layouts without brittle regexes.  
+**Tradeoff or limitation:** Anonymized resumes without personal names fall back to `"Candidate"`. Scanned image-only PDFs without text layers are rejected. 5 MB upload size cap.
 
 ---
 
@@ -137,5 +137,11 @@ Decision log for the Resume Screener Assistant.
 **Alternatives considered:** —  
 **Why:** —  
 **Tradeoff or limitation:** —
+
+---
+
+## Assumptions
+
+- **Candidate Name Source:** Requirement 1 specifies an input screen for job description and resume, while Requirement 3 requires History search by candidate name. Assumed candidate name should be extracted by the LLM from the resume text (falling back to `"Candidate"`), while permitting an optional HR override.
 
 

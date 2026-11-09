@@ -86,8 +86,7 @@ def screen_candidate(
 
     if was_truncated:
         logger.info(
-            "Input truncated for candidate '%s': jd_truncated=%s, resume_truncated=%s (limit=%d chars)",
-            payload.candidate_name,
+            "Input truncated: jd_truncated=%s, resume_truncated=%s (limit=%d chars)",
             jd_truncated,
             resume_truncated,
             max_chars,
@@ -112,8 +111,7 @@ def screen_candidate(
         except ValidationError as val_err:
             last_problems = _extract_validation_problems(val_err)
             logger.warning(
-                "LLM output validation failed for '%s' (attempt %d/%d): %s",
-                payload.candidate_name,
+                "LLM output validation failed (attempt %d/%d): %s",
                 attempts,
                 max_retries + 1,
                 last_problems,
@@ -128,11 +126,18 @@ def screen_candidate(
     if report is None:
         raise AnalysisValidationError(last_problems)
 
-    # 4. Persist to database (candidate_name, job_title, JD snapshot, score, and JSON report)
+    # 4. Resolve candidate name (explicit HR override > LLM-extracted name > "Candidate")
+    candidate_name = (
+        payload.candidate_name.strip()
+        or (report.candidate_name.strip() if report.candidate_name else "")
+        or "Candidate"
+    )
+
+    # 5. Persist to database (candidate_name, job_title, JD snapshot, score, and JSON report)
     # Notice: resume_text is intentionally omitted from the database to preserve privacy.
     analysis_row = Analysis(
-        candidate_name=payload.candidate_name,
-        job_title=payload.job_title,
+        candidate_name=candidate_name,
+        job_title=payload.job_title.strip(),
         job_description=truncated_jd,
         match_score=report.match_score,
         report=report.model_dump(),

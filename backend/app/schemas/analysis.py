@@ -21,9 +21,12 @@ ShortText = Annotated[
 
 class MatchReport(BaseModel):
 
-
     model_config = ConfigDict(extra="forbid")
 
+    candidate_name: ShortText = Field(
+        default="Candidate",
+        description="Full name of the candidate extracted from the resume, or 'Candidate' if not found.",
+    )
     match_score: int = Field(ge=0, le=100)
     matching_skills: list[ShortText] = Field(min_length=N_SKILLS, max_length=N_SKILLS)
     gaps: list[ShortText] = Field(min_length=N_GAPS, max_length=N_GAPS)
@@ -62,16 +65,16 @@ class AnalysisCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    candidate_name: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)
-    ]
-    job_title: Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)] = ""
     job_description: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_REQUEST_CHARS)
     ]
     resume_text: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_REQUEST_CHARS)
     ]
+    candidate_name: Annotated[
+        str, StringConstraints(strip_whitespace=True, max_length=255)
+    ] = ""
+    job_title: Annotated[str, StringConstraints(strip_whitespace=True, max_length=255)] = ""
 
 
 class AnalysisSummary(BaseModel):
