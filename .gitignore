@@ -1,0 +1,37 @@
+.env
+.env.*
+!.env.example
+
+*.db
+*.sqlite
+*.sqlite3
+
+# (backend) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# (frontend) ---
+node_modules/
+frontend/dist/
+.vite/
+npm-debug.log*
+
+# test logs ---
+.coverage
+htmlcov/
+*.log
+
+#file upload
+uploads/
+
+
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
