@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=1, ge=0, le=3)
 
     # Per-document cap in characters (~4 chars per token). Sized so that
-    # JD + resume + prompt + output fit the free tier's tokens-per-minute limit.
-    max_input_chars_per_doc: int = Field(default=8_000, gt=0)
+    # JD + resume + prompt + output fit safely within the free tier's 8,000 TPM limit.
+    max_input_chars_per_doc: int = Field(default=4_000, gt=0)
 
 
     database_url: str = "sqlite:///./app.db"

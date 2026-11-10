@@ -8,6 +8,7 @@ Strict boundaries:
 """
 
 import logging
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -52,10 +53,12 @@ class LLMClientError(Exception):
 
 
 class LLMRateLimitError(LLMClientError):
-    def __init__(self, retry_after: str | None = None):
+    def __init__(self, retry_after: str | None = None, is_daily_quota: bool = False):
         self.retry_after = retry_after
+        self.is_daily_quota = is_daily_quota
         suffix = f" (retry-after: {retry_after}s)" if retry_after else ""
-        super().__init__(f"Groq rate limit exceeded{suffix}")
+        quota_msg = "Daily AI quota exhausted" if is_daily_quota else "AI service temporarily rate-limited"
+        super().__init__(f"{quota_msg}{suffix}")
 
 
 class LLMConnectionError(LLMClientError):
@@ -88,24 +91,73 @@ def _get_client() -> Groq:
     )
 
 
+def _execute_chat_completion(client: Groq, model: str, system_prompt: str, user_prompt: str, temperature: float):
+    return client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+        response_format=_RESPONSE_FORMAT,
+        max_completion_tokens=MAX_OUTPUT_TOKENS,
+        reasoning_effort="low",
+    )
+
+
 def call_groq(system_prompt: str, user_prompt: str) -> LLMResponse:
     settings = get_settings()
+    client = _get_client()
+
     try:
-        completion = _get_client().chat.completions.create(
+        completion = _execute_chat_completion(
+            client=client,
             model=settings.groq_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
             temperature=settings.llm_temperature,
-            response_format=_RESPONSE_FORMAT,
-            max_completion_tokens=MAX_OUTPUT_TOKENS,
-            reasoning_effort="low",
         )
     except RateLimitError as e:
-        retry_after = e.response.headers.get("retry-after") if e.response is not None else None
-        logger.warning("Groq call failed: rate_limited, retry_after=%s", retry_after)
-        raise LLMRateLimitError(retry_after) from None
+        retry_after_str = e.response.headers.get("retry-after") if e.response is not None else None
+        err_msg = str(e).lower()
+        is_daily = any(term in err_msg for term in ["per day", "rpd", "tpd", "daily", "quota", "day limit"])
+
+        # Avoid blind retries on daily quota exhaustion (Point 5)
+        if is_daily:
+            logger.warning("Groq daily quota exhausted; aborting without retry")
+            raise LLMRateLimitError(retry_after=retry_after_str, is_daily_quota=True) from None
+
+        # Parse retry delay for temporary TPM/RPM rate limits
+        delay = None
+        if retry_after_str:
+            try:
+                delay = float(retry_after_str)
+            except ValueError:
+                delay = None
+
+        # If temporary and short wait (<= 5s), back off and retry ONCE (Point 1)
+        if delay is not None and delay <= 5.0:
+            logger.info("Temporary Groq 429 encountered; backing off for %.2fs before 1 retry", delay)
+            time.sleep(delay)
+            try:
+                completion = _execute_chat_completion(
+                    client=client,
+                    model=settings.groq_model,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=settings.llm_temperature,
+                )
+            except RateLimitError as retry_err:
+                new_retry_after = (
+                    retry_err.response.headers.get("retry-after")
+                    if retry_err.response is not None
+                    else retry_after_str
+                )
+                logger.warning("Groq retry also failed: rate_limited, retry_after=%s", new_retry_after)
+                raise LLMRateLimitError(retry_after=new_retry_after, is_daily_quota=False) from None
+        else:
+            logger.warning("Groq rate limit exceeded (delay=%s, is_daily=%s)", retry_after_str, is_daily)
+            raise LLMRateLimitError(retry_after=retry_after_str, is_daily_quota=False) from None
     except (APITimeoutError, APIConnectionError) as e:
         logger.warning("Groq call failed: connection, error_type=%s", type(e).__name__)
         raise LLMConnectionError("Connection to Groq timed out or failed") from None

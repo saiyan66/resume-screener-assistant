@@ -8,56 +8,33 @@ interface AnalyzePageProps {
   onNavigateToHistory?: () => void;
 }
 
-const MAX_CHARS = 8000;
+const MAX_CHARS = 4000;
 
 const SAMPLE_JD = `Role: Senior Backend Engineer (Python / FastAPI)
-Company: Synthweb Technologies
-Location: Remote
-
-About the Role:
-We are looking for a Senior Backend Engineer to lead the design and implementation of our high-throughput AI document processing pipelines.
-
 Requirements:
-- 5+ years of experience with Python, FastAPI, and asynchronous programming.
-- Deep hands-on experience with PostgreSQL or SQLite, SQLAlchemy ORM, and query optimization.
-- Proven experience integrating Large Language Models (Groq, OpenAI, or Anthropic) into production services.
-- Solid understanding of Docker, containerization, and automated CI/CD pipelines.
-- Experience with prompt engineering, structured JSON outputs, and LLM rate limit management.
-- Strong grounding in system architecture, microservices, and secure API design.
+- 4+ years experience with Python, FastAPI, and asynchronous APIs.
+- Production experience with PostgreSQL, SQLite, and SQLAlchemy ORM.
+- Hands-on integration with LLM APIs (Groq, OpenAI) using structured outputs.
+- Familiarity with Docker and basic CI/CD automation.
+Nice to have: React, Celery, or Redis.`;
 
-Nice to Have:
-- Experience with React, TypeScript, or modern frontend stacks.
-- Familiarity with distributed task queues like Celery, Redis, or BullMQ.
-- Knowledge of privacy standards (GDPR, SOC2) regarding data handling.`;
+const SAMPLE_RESUME = `Alex Rivera — Senior Backend Engineer
+Email: alex.rivera@example.com | Location: Remote
 
-const SAMPLE_RESUME = `Alex Rivera
-Senior Software Engineer | Python & Cloud Systems
-Email: alex.rivera@example.com | GitHub: github.com/arivera | Location: Austin, TX
+Summary:
+Backend engineer with 5 years building scalable Python services and LLM integrations.
 
-SUMMARY:
-Senior Engineer with 6+ years specializing in Python backend architecture, REST/GraphQL APIs, and AI workflow automation. Passionate about resilient distributed systems, database reliability, and prompt-driven microservices.
+Core Skills:
+Python, FastAPI, PostgreSQL, SQLite, SQLAlchemy, Groq SDK, Docker, Git.
 
-CORE TECHNICAL SKILLS:
-- Languages & Frameworks: Python (FastAPI, Flask, Django), TypeScript, SQL, Bash
-- Databases & ORM: PostgreSQL, SQLite, SQLAlchemy, Alembic, Redis
-- AI & LLM Systems: Groq Cloud, LangChain, OpenAI APIs, Structured Schema Validation, Guardrails
-- DevOps & Tools: Docker, Kubernetes, GitHub Actions, AWS (ECS, RDS, S3), Git
+Experience:
+Senior Software Engineer (2021-Present)
+- Developed asynchronous FastAPI REST APIs handling LLM document processing pipelines.
+- Implemented structured Pydantic JSON schemas with Groq and OpenAI.
+- Optimized database queries and indexed SQLite/PostgreSQL schemas.
 
-PROFESSIONAL EXPERIENCE:
-Senior Backend Engineer | CloudScale Systems (2022 - Present)
-- Designed and maintained asynchronous FastAPI microservices serving over 15M daily requests with sub-50ms latency.
-- Spearheaded the integration of Groq and OpenAI LLM endpoints for automated document summarization, implementing strict JSON output validation with Pydantic.
-- Optimized SQLAlchemy database queries and indexes, reducing p99 latency by 42% on PostgreSQL.
-- Architected zero-downtime deployment pipelines with Docker and GitHub Actions.
-
-Software Engineer | FinTech Dynamics (2019 - 2022)
-- Built robust data ingestion services processing financial statements using Python and Celery.
-- Developed comprehensive automated test suites achieving 92% unit test coverage with pytest.
-- Implemented role-based access control (RBAC) and data sanitization for compliance.
-
-EDUCATION & CERTIFICATIONS:
-- B.S. in Computer Science | University of Texas at Austin (2019)
-- AWS Certified Solutions Architect - Associate (2023)`;
+Education:
+B.S. in Computer Science (2020)`;
 
 export const AnalyzePage: React.FC<AnalyzePageProps> = ({
   onAnalysisSuccess,

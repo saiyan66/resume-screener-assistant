@@ -133,12 +133,19 @@ def create_analysis(
     in the response body if the input exceeded character limits.
     """
     try:
-        analysis_row, was_truncated = screen_candidate(payload=payload, db=db)
+        analysis_row, was_truncated, token_usage = screen_candidate(payload=payload, db=db)
     except LLMRateLimitError as err:
         headers = {"Retry-After": str(err.retry_after)} if err.retry_after else None
+        if err.is_daily_quota:
+            friendly_msg = "Daily AI screening limit reached. The quota will reset tomorrow."
+        elif err.retry_after:
+            friendly_msg = f"AI service temporarily rate-limited. Please try again in {err.retry_after}s."
+        else:
+            friendly_msg = "AI service temporarily rate-limited. Please try again shortly."
+
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(err),
+            detail=friendly_msg,
             headers=headers,
         ) from None
     except LLMConnectionError:
@@ -176,6 +183,7 @@ def create_analysis(
 
     detail = AnalysisDetail.model_validate(analysis_row)
     detail.input_truncated = was_truncated
+    detail.token_usage = token_usage
     return detail
 
 

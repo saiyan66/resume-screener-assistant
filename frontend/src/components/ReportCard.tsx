@@ -56,7 +56,7 @@ export const ReportCard: React.FC<ReportCardProps> = ({
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
           <div>
-            <strong>Document Truncated:</strong> The Job Description or Resume exceeded the 8,000-character safety limit and was truncated prior to analysis.
+            <strong>Document Truncated:</strong> The Job Description or Resume exceeded the 4,000-character limit and was truncated prior to analysis.
           </div>
         </div>
       )}

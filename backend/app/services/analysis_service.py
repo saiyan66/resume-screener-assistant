@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.models.analysis import Analysis
 from app.prompts.screener import SYSTEM_PROMPT, build_retry_prompt, build_user_prompt
-from app.schemas.analysis import AnalysisCreate, MatchReport
+from app.schemas.analysis import AnalysisCreate, MatchReport, TokenUsageInfo
 from app.services.llm_client import call_groq
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def _extract_validation_problems(err: ValidationError) -> list[str]:
 def screen_candidate(
     payload: AnalysisCreate,
     db: Session,
-) -> Tuple[Analysis, bool]:
+) -> Tuple[Analysis, bool, TokenUsageInfo]:
     """
     Execute the resume screening pipeline:
       - Truncates input documents to respect token budgets.
@@ -70,7 +70,7 @@ def screen_candidate(
       - Saves the record into the database.
 
     Returns:
-      Tuple[Analysis, bool]: The persisted ORM instance and a flag indicating if truncation occurred.
+      Tuple[Analysis, bool, TokenUsageInfo]: Persisted ORM instance, truncation flag, and cumulative token metrics.
 
     Raises:
       AnalysisValidationError: If LLM output fails schema validation across all retries.
@@ -100,10 +100,19 @@ def screen_candidate(
     report: MatchReport | None = None
     last_problems: list[str] = []
 
+    # Token awareness: accumulate token consumption across all calls (Point 3)
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_tokens = 0
+
     # 3. LLM call & self-correcting validation loop
     while attempts <= max_retries:
         attempts += 1
         response = call_groq(system_prompt=SYSTEM_PROMPT, user_prompt=user_prompt)
+
+        total_prompt_tokens += response.usage.prompt_tokens
+        total_completion_tokens += response.usage.completion_tokens
+        total_tokens += response.usage.total_tokens
 
         try:
             report = MatchReport.model_validate_json(response.text)
@@ -152,12 +161,22 @@ def screen_candidate(
         logger.error("Failed to persist analysis to database: error_type=%s", type(db_err).__name__)
         raise
 
+    usage_info = TokenUsageInfo(
+        prompt_tokens=total_prompt_tokens,
+        completion_tokens=total_completion_tokens,
+        total_tokens=total_tokens,
+    )
+
     logger.info(
-        "Successfully saved analysis id=%d with score=%d (truncated=%s)",
+        "Successfully saved analysis id=%d with score=%d (attempts=%d, total_tokens=%d, prompt=%d, completion=%d, truncated=%s)",
         analysis_row.id,
         analysis_row.match_score,
+        attempts,
+        usage_info.total_tokens,
+        usage_info.prompt_tokens,
+        usage_info.completion_tokens,
         was_truncated,
     )
 
-    return analysis_row, was_truncated
+    return analysis_row, was_truncated, usage_info
 

@@ -94,11 +94,20 @@ class AnalysisSummary(BaseModel):
         return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
 
 
+class TokenUsageInfo(BaseModel):
+    """Token consumption metrics for a screening run."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
 class AnalysisDetail(AnalysisSummary):
 
     job_description: str
     report: MatchReport
     input_truncated: bool = False
+    token_usage: TokenUsageInfo | None = None
 
 
 class AnalysisListResponse(BaseModel):

@@ -21,10 +21,17 @@ export interface AnalysisSummary {
   created_at: string
 }
 
+export interface TokenUsageInfo {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+}
+
 export interface AnalysisDetail extends AnalysisSummary {
   job_description: string
   report: MatchReport
   input_truncated: boolean
+  token_usage?: TokenUsageInfo
 }
 
 export interface AnalysisListResponse {
