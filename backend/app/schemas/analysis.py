@@ -27,7 +27,7 @@ class MatchReport(BaseModel):
         ...,
         description="Full name of the candidate extracted from the resume, or 'Candidate' if not found.",
     )
-    match_score: int = Field(ge=0, le=100)
+    match_score: int = Field(ge=0, le=100, strict=True)
     matching_skills: list[ShortText] = Field(min_length=N_SKILLS, max_length=N_SKILLS)
     gaps: list[ShortText] = Field(min_length=N_GAPS, max_length=N_GAPS)
     interview_questions: list[ShortText] = Field(min_length=N_QUESTIONS, max_length=N_QUESTIONS)

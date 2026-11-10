@@ -89,6 +89,45 @@ I did not ask for a whole app in one shot. Each request was scoped to a single f
 | Persist failed runs | Success-only — failures return HTTP errors, nothing saved |
 | Nullable `match_score` | Non-null `match_score` after validated `MatchReport` |
 
+### 3. Pydantic v2 Type Coercion: String numbers silently bypassed integer schema
+
+**What happened:**
+When defining the `MatchReport` schema, the score field was declared as:
+```python
+match_score: int = Field(ge=0, le=100)
+```
+While `ShortText` had strict string constraints, `match_score` lacked `strict=True`.
+
+**The Failing Test Proof:**
+In our contract test suite (`tests/test_schemas_and_prompts.py`), we wrote an explicit test asserting that passing a string for the match score must raise a `ValidationError`:
+```python
+@pytest.mark.parametrize(
+    "patch_dict, description",
+    [
+        ({"match_score": "70"}, "score as string instead of integer"),
+        ...
+    ],
+)
+def test_invalid_match_report_rejected(patch_dict, description):
+    with pytest.raises(ValidationError):
+        MatchReport.model_validate(base_data)
+```
+
+**The Failure:**
+The test failed with:
+```text
+FAILED tests/test_schemas_and_prompts.py::test_invalid_match_report_rejected[patch_dict1-score as string instead of integer]
+E       Failed: DID NOT RAISE ValidationError
+```
+Because Pydantic v2 operates in default coercion mode unless told otherwise, it silently cast `"70"` (string) into `70` (integer). If the LLM returned numbers formatted as strings, the schema silently swallowed the deviation rather than enforcing strict JSON types.
+
+**How I fixed it:**
+Enforced `strict=True` on the field in `schemas/analysis.py`:
+```python
+match_score: int = Field(ge=0, le=100, strict=True)
+```
+Re-running `pytest` confirmed that string numbers are now properly rejected with `ValidationError`, bringing the test suite to **30 passed / 0 failed (100% green)**.
+
 ---
 
 ## Honest takeaway
