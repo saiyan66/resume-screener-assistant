@@ -10,6 +10,10 @@ import type {
   ResumeUploadResponse,
 } from './types'
 
+// Reads backend URL from environment
+// Defaults to empty string in local development so Vite's dev proxy handles /api.
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+
 class ApiError extends Error {
   status: number
 
@@ -47,7 +51,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
  * Screen a candidate resume against a job description.
  */
 export async function createAnalysis(payload: AnalysisCreate): Promise<AnalysisDetail> {
-  const res = await fetch('/api/analyses', {
+  const res = await fetch(`${API_BASE_URL}/api/analyses`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -80,7 +84,7 @@ export async function getAnalyses(
   }
 
   const qs = query.toString()
-  const url = qs ? `/api/analyses?${qs}` : '/api/analyses'
+  const url = qs ? `${API_BASE_URL}/api/analyses?${qs}` : `${API_BASE_URL}/api/analyses`
 
   const res = await fetch(url, { method: 'GET' })
   return handleResponse<AnalysisListResponse>(res)
@@ -90,7 +94,7 @@ export async function getAnalyses(
  * Retrieve a single detailed analysis record by primary key ID.
  */
 export async function getAnalysisById(id: number): Promise<AnalysisDetail> {
-  const res = await fetch(`/api/analyses/${id}`, { method: 'GET' })
+  const res = await fetch(`${API_BASE_URL}/api/analyses/${id}`, { method: 'GET' })
   return handleResponse<AnalysisDetail>(res)
 }
 
@@ -98,7 +102,7 @@ export async function getAnalysisById(id: number): Promise<AnalysisDetail> {
  * Delete a past analysis record by ID.
  */
 export async function deleteAnalysis(id: number): Promise<void> {
-  const res = await fetch(`/api/analyses/${id}`, { method: 'DELETE' })
+  const res = await fetch(`${API_BASE_URL}/api/analyses/${id}`, { method: 'DELETE' })
   return handleResponse<void>(res)
 }
 
@@ -109,7 +113,7 @@ export async function uploadResumeFile(file: File): Promise<ResumeUploadResponse
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await fetch('/api/analyses/upload', {
+  const res = await fetch(`${API_BASE_URL}/api/analyses/upload`, {
     method: 'POST',
     body: formData,
   })
